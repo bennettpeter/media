@@ -25,6 +25,10 @@ android {
             withSourcesJar()
         }
     }
+    buildTypes {
+        google {
+        }
+    }
 }
 
 dependencies {

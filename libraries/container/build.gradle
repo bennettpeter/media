@@ -27,6 +27,8 @@ android {
         debug {
             testCoverageEnabled = true
         }
+        google {
+        }
     }
 
     sourceSets {

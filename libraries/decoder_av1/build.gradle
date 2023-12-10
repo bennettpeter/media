@@ -27,6 +27,10 @@ android {
             }
         }
     }
+    buildTypes {
+        google {
+        }
+    }
 }
 
 // Configure the native build only if libgav1 is present to avoid gradle sync

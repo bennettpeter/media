@@ -23,6 +23,10 @@ android {
         }
         androidTest.assets.srcDir '../test_data/src/test/assets'
     }
+    buildTypes {
+        google {
+        }
+    }
 }
 
 dependencies {

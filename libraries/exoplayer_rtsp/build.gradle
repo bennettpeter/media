@@ -20,6 +20,8 @@ android {
         debug {
             testCoverageEnabled = true
         }
+        google {
+        }
     }
 
     sourceSets.test.assets.srcDir '../test_data/src/test/assets/'
