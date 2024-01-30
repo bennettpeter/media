@@ -79,3 +79,9 @@ extensions/cronet/libs/*
 
 # MIDI extension
 extensions/midi/lib
+
+# Peter
+libraries/decoder_ffmpeg/.cxx/
+libraries/decoder_ffmpeg/src/main/ffmpeg
+libraries/decoder_ffmpeg/src/main/jni/ffmpeg
+libraries/decoder_ffmpeg/src/main/main
