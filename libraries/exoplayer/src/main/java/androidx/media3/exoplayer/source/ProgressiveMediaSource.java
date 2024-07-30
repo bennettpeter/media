@@ -242,6 +242,11 @@ public final class ProgressiveMediaSource extends BaseMediaSource
   @GuardedBy("this")
   private MediaItem mediaItem;
 
+  // Peter
+  ProgressiveMediaPeriod mediaPeriod;
+  private boolean possibleEmptyTrack;
+
+
   private ProgressiveMediaSource(
       MediaItem mediaItem,
       DataSource.Factory dataSourceFactory,
@@ -300,7 +305,8 @@ public final class ProgressiveMediaSource extends BaseMediaSource
       dataSource.addTransferListener(transferListener);
     }
     MediaItem.LocalConfiguration localConfiguration = getLocalConfiguration();
-    return new ProgressiveMediaPeriod(
+    // Peter
+    mediaPeriod = new ProgressiveMediaPeriod(
         localConfiguration.uri,
         dataSource,
         progressiveMediaExtractorFactory.createProgressiveMediaExtractor(getPlayerId()),
@@ -313,11 +319,26 @@ public final class ProgressiveMediaSource extends BaseMediaSource
         localConfiguration.customCacheKey,
         continueLoadingCheckIntervalBytes,
         Util.msToUs(localConfiguration.imageDurationMs));
+    mediaPeriod.setPossibleEmptyTrack(possibleEmptyTrack);
+    return mediaPeriod;
   }
 
   @Override
   public void releasePeriod(MediaPeriod mediaPeriod) {
     ((ProgressiveMediaPeriod) mediaPeriod).release();
+    // Peter
+    if (mediaPeriod == this.mediaPeriod)
+      this.mediaPeriod = null;
+  }
+
+  // Peter
+  public SampleQueue [] getSampleQueues() {
+    return mediaPeriod.getSampleQueues();
+  }
+
+  // Peter
+  public void setPossibleEmptyTrack(boolean possibleEmptyTrack) {
+    this.possibleEmptyTrack = possibleEmptyTrack;
   }
 
   @Override
