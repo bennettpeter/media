@@ -328,6 +328,9 @@ public final class ProgressiveMediaSource extends BaseMediaSource
   private MediaItem mediaItem;
 
   @Nullable private Listener listener;
+  // Peter
+  ProgressiveMediaPeriod mediaPeriod;
+  private boolean possibleEmptyTrack;
 
   private ProgressiveMediaSource(
       MediaItem mediaItem,
@@ -393,7 +396,8 @@ public final class ProgressiveMediaSource extends BaseMediaSource
       dataSource.addTransferListener(transferListener);
     }
     MediaItem.LocalConfiguration localConfiguration = getLocalConfiguration();
-    return new ProgressiveMediaPeriod(
+    // Peter
+    mediaPeriod = new ProgressiveMediaPeriod(
         localConfiguration.uri,
         dataSource,
         progressiveMediaExtractorFactory.createProgressiveMediaExtractor(getPlayerId()),
@@ -409,11 +413,26 @@ public final class ProgressiveMediaSource extends BaseMediaSource
         singleTrackFormat,
         Util.msToUs(localConfiguration.imageDurationMs),
         downloadExecutorSupplier != null ? downloadExecutorSupplier.get() : null);
+    mediaPeriod.setPossibleEmptyTrack(possibleEmptyTrack);
+    return mediaPeriod;
   }
 
   @Override
   public void releasePeriod(MediaPeriod mediaPeriod) {
     ((ProgressiveMediaPeriod) mediaPeriod).release();
+    // Peter
+    if (mediaPeriod == this.mediaPeriod)
+      this.mediaPeriod = null;
+  }
+
+  // Peter
+  public SampleQueue [] getSampleQueues() {
+    return mediaPeriod.getSampleQueues();
+  }
+
+  // Peter
+  public void setPossibleEmptyTrack(boolean possibleEmptyTrack) {
+    this.possibleEmptyTrack = possibleEmptyTrack;
   }
 
   @Override
