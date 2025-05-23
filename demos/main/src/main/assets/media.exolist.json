@@ -723,6 +723,10 @@
     "name": "Progressive",
     "samples": [
       {
+        "name": "Ceadecoder test",
+        "uri": "http://framework.lan:6544/Content/GetVideo?Id=25"
+      },
+      {
         "name": "Dizzy (MP4)",
         "uri": "https://html5demos.com/assets/dizzy.mp4"
       },
