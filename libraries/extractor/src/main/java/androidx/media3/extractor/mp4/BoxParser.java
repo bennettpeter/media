@@ -95,6 +95,9 @@ public final class BoxParser {
   private static final int TYPE_subt = 0x73756274;
 
   @SuppressWarnings("ConstantCaseForConstants")
+  private static final int TYPE_subp = 0x73756270;
+
+  @SuppressWarnings("ConstantCaseForConstants")
   private static final int TYPE_text = 0x74657874;
 
   @SuppressWarnings("ConstantCaseForConstants")
@@ -111,6 +114,16 @@ public final class BoxParser {
 
   /** The magic signature for an Opus Identification header, as defined in RFC-7845. */
   private static final byte[] opusMagic = Util.getUtf8Bytes("OpusHead");
+
+  /** This is a hack to get the width and height from the video track into any vobsub
+   * subtitle tracks. It would be preferable to modify the vobsub track initialization
+   * data in parseTraks after all tracks have been parsed, but all of the structures
+   * involved are final so cannot be modified. These are default values that will be
+   * updated as video tracks are parsed, then used when a vobsub track is parsed.
+   * If the vobsub occurs before the video track, the default values here will be used.
+   */
+  private static int width = 720;
+  private static int height = 576;
 
   /** Parses the version number out of the additional integer component of a full box. */
   public static int parseFullBoxVersion(int fullBoxInt) {
@@ -991,7 +1004,7 @@ public final class BoxParser {
       return C.TRACK_TYPE_AUDIO;
     } else if (hdlr == TYPE_vide) {
       return C.TRACK_TYPE_VIDEO;
-    } else if (hdlr == TYPE_text || hdlr == TYPE_sbtl || hdlr == TYPE_subt || hdlr == TYPE_clcp) {
+    } else if (hdlr == TYPE_text || hdlr == TYPE_sbtl || hdlr == TYPE_subt || hdlr == TYPE_clcp || hdlr == TYPE_subp) {
       return C.TRACK_TYPE_TEXT;
     } else if (hdlr == TYPE_meta) {
       return C.TRACK_TYPE_METADATA;
@@ -1153,7 +1166,8 @@ public final class BoxParser {
           || childAtomType == Mp4Box.TYPE_tx3g
           || childAtomType == Mp4Box.TYPE_wvtt
           || childAtomType == Mp4Box.TYPE_stpp
-          || childAtomType == Mp4Box.TYPE_c608) {
+          || childAtomType == Mp4Box.TYPE_c608
+          || childAtomType == Mp4Box.TYPE_mp4s) {
         parseTextSampleEntry(
             stsd, childAtomType, childStartPosition, childAtomSize, trackId, language, out);
       } else if (childAtomType == Mp4Box.TYPE_mett) {
@@ -1202,6 +1216,18 @@ public final class BoxParser {
       // Defined by the QuickTime File Format specification.
       mimeType = MimeTypes.APPLICATION_MP4CEA608;
       out.requiredSampleTransformation = Track.TRANSFORMATION_CEA608_CDAT;
+    } else if (atomType == Mp4Box.TYPE_mp4s) {
+      int pos = parent.getPosition();
+      mimeType = MimeTypes.APPLICATION_VOBSUB;
+      int childAtomSize = parent.readInt();
+      int childAtomType = parent.readInt();
+      if (childAtomType == Mp4Box.TYPE_esds) {
+        EsdsData esds = parseEsdsFromParent(parent, pos);
+        String idx = formatVobsubIdx(esds.initializationData);
+        if (idx == null)
+          return;
+        initializationData = ImmutableList.of(Util.getUtf8Bytes(idx));
+      }
     } else {
       // Never happens.
       throw new IllegalStateException();
@@ -1215,6 +1241,50 @@ public final class BoxParser {
             .setSubsampleOffsetUs(subsampleOffsetUs)
             .setInitializationData(initializationData)
             .build();
+  }
+
+  private static int clip (int a) {
+    if (a < 0)
+      return 0;
+    if (a > 255)
+      return 255;
+    return a;
+  }
+  private static int yuvToRgb(int yuv) {
+    int y, u, v;
+    int r,g,b;
+    y = (yuv >> 16) & 0xFF;
+    v = (yuv >> 8)  & 0xFF;
+    u =  yuv        & 0xFF;
+
+    r = clip(y + 14075 * (v - 128) / 10000);
+    g = clip(y - 3455 * (u - 128) / 10000 - 7160 * (v - 120) / 10000);
+    b = clip(y + 17790 * (u - 128) / 10000);
+
+    return (r << 16) | (g << 8) | b;
+  }
+
+  static String formatVobsubIdx(byte[] src)  {
+    ParsableByteArray input  = new ParsableByteArray((src));
+    StringBuilder buf = new StringBuilder();
+    int i;
+    if (src.length != 64)
+      return null;
+    buf.append("size: ")
+            .append(width)
+            .append("x")
+            .append(height)
+            .append("\n")
+            .append("palette: ");
+    for (i = 0; i < 16; i++) {
+      int yuv = input.readInt();
+      int rgba = yuvToRgb(yuv);
+      if (i > 0)
+        buf.append(", ");
+      buf.append(String.format("%06x",rgba));
+    }
+    buf.append("\n");
+    return buf.toString();
   }
 
   // hdrStaticInfo is allocated using allocate() in allocateHdrStaticInfo().
@@ -1611,6 +1681,9 @@ public final class BoxParser {
                     .setChromaBitdepth(bitdepthChroma)
                     .build());
 
+    // save width and height in static variables for subsequent use by vobsub subtitles.
+    BoxParser.width = width;
+    BoxParser.height = height;
     // Prefer btrtData over esdsData for video track.
     if (btrtData != null) {
       formatBuilder
