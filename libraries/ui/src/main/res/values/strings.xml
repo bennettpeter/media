@@ -83,7 +83,17 @@
     <item>1.5x</item>
     <item>2x</item>
   </string-array>
-  <!-- LINT.ThenChange(../../java/androidx/media3/ui/PlayerControlView.java:playback_speeds) -->
+  <!--  Percentage values corresponding to the speed prompts above. This array must be the same size as exo_controls_playback_speeds-->
+  <integer-array name="exo_controls_playback_speed_values">
+    <item>25</item>
+    <item>50</item>
+    <item>75</item>
+    <item>100</item>
+    <item>125</item>
+    <item>150</item>
+    <item>200</item>
+ </integer-array>
+    <!-- LINT.ThenChange(../../java/androidx/media3/ui/PlayerControlView.java:playback_speeds) -->
   <!-- Shown to indicate a custom playback speed. [CHAR_LIMIT=16] -->
   <string translatable="false" name="exo_controls_custom_playback_speed"><xliff:g id="playback_speed" example="1.05">%1$.2f</xliff:g>x</string>
   <!-- Placeholder text for displaying time. Used to calculate which size layout to use. -->
