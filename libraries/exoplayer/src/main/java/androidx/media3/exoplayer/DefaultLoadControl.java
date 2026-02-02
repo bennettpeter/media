@@ -800,7 +800,15 @@ public class DefaultLoadControl implements LoadControl {
                 + "prioritizeTimeOverSizeThresholds=true.");
       }
       if (!playerLoadingState.isLoading && parameters.bufferedDurationUs < 500_000) {
-        Log.w(TAG, "Target buffer size reached with less than 500ms of buffered media data.");
+        // PETER
+        // changed 1 line and added 2
+        // Handle videos stuck at this message because a track is malformed
+        // leanfront catches the exception and fixes it.
+        Log.w(
+            "DefaultLoadControl",
+            "Target buffer size reached with less than 500ms of buffered media data. ms:" + (parameters.bufferedDurationUs/1000));
+        if (parameters.bufferedDurationUs == 0)
+          throw new IllegalStateException("Playback stuck buffering and not loading");
       }
     } else if (parameters.bufferedDurationUs >= maxBufferUs || targetBufferSizeReached) {
       playerLoadingState.isLoading = false;
@@ -1077,7 +1085,7 @@ public class DefaultLoadControl implements LoadControl {
     }
 
     @Override
-    public synchronized void release(@Nullable AllocationNode allocationNode) {
+    public synchronized void release(@Nullable Allocator.AllocationNode allocationNode) {
       allocator.release(allocationNode);
       while (allocationNode != null) {
         releaseInternal(allocationNode.getAllocation());
