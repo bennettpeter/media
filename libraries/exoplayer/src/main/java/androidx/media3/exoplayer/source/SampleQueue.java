@@ -1179,6 +1179,10 @@ public class SampleQueue implements TrackOutput {
     @C.TrackType int trackType = MimeTypes.getTrackType(mimeType);
     return trackType == C.TRACK_TYPE_AUDIO && MimeTypes.allSamplesAreSyncSamples(mimeType, codec);
   }
+  // Peter
+  public long[] getTimesUs() {
+    return timesUs;
+  }
 
   /** A holder for sample metadata not held by {@link DecoderInputBuffer}. */
   /* package */ static final class SampleExtrasHolder {
