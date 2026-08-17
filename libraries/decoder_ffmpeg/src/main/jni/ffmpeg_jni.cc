@@ -16,7 +16,6 @@
 #include <android/log.h>
 #include <jni.h>
 #include <stdlib.h>
-#include <thread>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <libyuv.h>
@@ -112,11 +111,11 @@ AVCodecContext* createContext(JNIEnv* env, const AVCodec* codec,
                               jint rawSampleRate, jint rawChannelCount);
 
 struct GrowOutputBufferCallback {
-  uint8_t* operator()(int requiredSize) const;
+    uint8_t* operator()(int requiredSize) const;
 
-  JNIEnv* env;
-  jobject thiz;
-  jobject decoderOutputBuffer;
+    JNIEnv* env;
+    jobject thiz;
+    jobject decoderOutputBuffer;
 };
 
 /**
@@ -143,316 +142,304 @@ void logError(const char* functionName, int errorNumber);
  */
 void releaseContext(AVCodecContext* context);
 
-jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-  JNIEnv* env;
-  if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
-    LOGE("JNI_OnLoad: GetEnv failed");
-    return -1;
-  }
-  jclass clazz =
-      env->FindClass("androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder");
-  if (!clazz) {
-    LOGE("JNI_OnLoad: FindClass failed");
-    return -1;
-  }
-  growOutputBufferMethod =
-      env->GetMethodID(clazz, "growOutputBuffer",
-                       "(Landroidx/media3/decoder/"
-                       "SimpleDecoderOutputBuffer;I)Ljava/nio/ByteBuffer;");
-  if (!growOutputBufferMethod) {
-    LOGE("JNI_OnLoad: GetMethodID failed");
-    return -1;
-  }
-  return JNI_VERSION_1_6;
+jstring ffmpegGetVersion(JNIEnv* env, jobject thiz) {
+    return env->NewStringUTF(LIBAVCODEC_IDENT);
 }
 
-LIBRARY_FUNC(jstring, ffmpegGetVersion) {
-  return env->NewStringUTF(LIBAVCODEC_IDENT);
+jint ffmpegGetInputBufferPaddingSize(JNIEnv* env, jobject thiz) {
+    return (jint)AV_INPUT_BUFFER_PADDING_SIZE;
 }
 
-LIBRARY_FUNC(jint, ffmpegGetInputBufferPaddingSize) {
-  return (jint)AV_INPUT_BUFFER_PADDING_SIZE;
+jboolean ffmpegHasDecoder(JNIEnv* env, jobject thiz, jstring codecName) {
+    return getCodecByName(env, codecName) != NULL;
 }
 
-LIBRARY_FUNC(jboolean, ffmpegHasDecoder, jstring codecName) {
-  return getCodecByName(env, codecName) != NULL;
+jstring ffmpegGetAv1DecoderName(JNIEnv* env, jobject thiz) {
+    if (avcodec_find_decoder_by_name("libdav1d")) {
+        return env->NewStringUTF("libdav1d");
+    }
+    if (avcodec_find_decoder_by_name("libaom-av1")) {
+        return env->NewStringUTF("libaom-av1");
+    }
+    return NULL;
 }
 
-AUDIO_DECODER_FUNC(jlong, ffmpegInitialize, jstring codecName,
-                   jbyteArray extraData, jboolean outputFloat,
-                   jint rawSampleRate, jint rawChannelCount) {
-  const AVCodec* codec = getCodecByName(env, codecName);
-  if (!codec) {
-    LOGE("Codec not found.");
-    return 0L;
-  }
-  return (jlong)createContext(env, codec, extraData, outputFloat, rawSampleRate,
-                              rawChannelCount);
+jlong ffmpegInitialize(JNIEnv* env, jobject thiz, jstring codecName,
+                       jbyteArray extraData, jboolean outputFloat,
+                       jint rawSampleRate, jint rawChannelCount) {
+    const AVCodec* codec = getCodecByName(env, codecName);
+    if (!codec) {
+        LOGE("Codec not found.");
+        return 0L;
+    }
+    return (jlong)createContext(env, codec, extraData, outputFloat, rawSampleRate,
+                                rawChannelCount);
 }
 
-AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
-                   jint inputSize, jobject decoderOutputBuffer,
-                   jobject outputData, jint outputSize) {
-  if (!context) {
-    LOGE("Context must be non-NULL.");
-    return -1;
-  }
-  if (!inputData || !decoderOutputBuffer || !outputData) {
-    LOGE("Input and output buffers must be non-NULL.");
-    return -1;
-  }
-  if (inputSize < 0) {
-    LOGE("Invalid input buffer size: %d.", inputSize);
-    return -1;
-  }
-  if (outputSize < 0) {
-    LOGE("Invalid output buffer length: %d", outputSize);
-    return -1;
-  }
-  uint8_t* inputBuffer = (uint8_t*)env->GetDirectBufferAddress(inputData);
-  uint8_t* outputBuffer = (uint8_t*)env->GetDirectBufferAddress(outputData);
-  AVPacket* packet = av_packet_alloc();
-  if (!packet) {
-    LOGE("Failed to allocate packet.");
-    return -1;
-  }
-  packet->data = inputBuffer;
-  packet->size = inputSize;
-  const int ret =
-      decodePacket((AVCodecContext*)context, packet, outputBuffer, outputSize,
-                   GrowOutputBufferCallback{env, thiz, decoderOutputBuffer});
-  av_packet_free(&packet);
-  return ret;
+jint ffmpegDecode(JNIEnv* env, jobject thiz, jlong context, jobject inputData,
+                  jint inputSize, jobject decoderOutputBuffer,
+                  jobject outputData, jint outputSize) {
+    if (!context) {
+        LOGE("Context must be non-NULL.");
+        return -1;
+    }
+    if (!inputData || !decoderOutputBuffer || !outputData) {
+        LOGE("Input and output buffers must be non-NULL.");
+        return -1;
+    }
+    if (inputSize < 0) {
+        LOGE("Invalid input buffer size: %d.", inputSize);
+        return -1;
+    }
+    if (outputSize < 0) {
+        LOGE("Invalid output buffer length: %d", outputSize);
+        return -1;
+    }
+    uint8_t* inputBuffer = (uint8_t*)env->GetDirectBufferAddress(inputData);
+    uint8_t* outputBuffer = (uint8_t*)env->GetDirectBufferAddress(outputData);
+    AVPacket* packet = av_packet_alloc();
+    if (!packet) {
+        LOGE("Failed to allocate packet.");
+        return -1;
+    }
+    packet->data = inputBuffer;
+    packet->size = inputSize;
+    const int ret =
+            decodePacket((AVCodecContext*)context, packet, outputBuffer, outputSize,
+                         GrowOutputBufferCallback{env, thiz, decoderOutputBuffer});
+    av_packet_free(&packet);
+    return ret;
 }
 
 uint8_t* GrowOutputBufferCallback::operator()(int requiredSize) const {
-  jobject newOutputData = env->CallObjectMethod(
-      thiz, growOutputBufferMethod, decoderOutputBuffer, requiredSize);
-  if (env->ExceptionCheck()) {
-    LOGE("growOutputBuffer() failed");
-    env->ExceptionDescribe();
-    return nullptr;
-  }
-  return static_cast<uint8_t*>(env->GetDirectBufferAddress(newOutputData));
-}
-
-AUDIO_DECODER_FUNC(jint, ffmpegGetChannelCount, jlong context) {
-  if (!context) {
-    LOGE("Context must be non-NULL.");
-    return -1;
-  }
-  return ((AVCodecContext*)context)->ch_layout.nb_channels;
-}
-
-AUDIO_DECODER_FUNC(jint, ffmpegGetSampleRate, jlong context) {
-  if (!context) {
-    LOGE("Context must be non-NULL.");
-    return -1;
-  }
-  return ((AVCodecContext*)context)->sample_rate;
-}
-
-AUDIO_DECODER_FUNC(jlong, ffmpegReset, jlong jContext, jbyteArray extraData) {
-  AVCodecContext* context = (AVCodecContext*)jContext;
-  if (!context) {
-    LOGE("Tried to reset without a context.");
-    return 0L;
-  }
-
-  AVCodecID codecId = context->codec_id;
-  if (codecId == AV_CODEC_ID_TRUEHD) {
-    jboolean outputFloat =
-        (jboolean)(context->request_sample_fmt == OUTPUT_FORMAT_PCM_FLOAT);
-    // Release and recreate the context if the codec is TrueHD.
-    // TODO: Figure out why flushing doesn't work for this codec.
-    releaseContext(context);
-    const AVCodec* codec = avcodec_find_decoder(codecId);
-    if (!codec) {
-      LOGE("Unexpected error finding codec %d.", codecId);
-      return 0L;
+    jobject newOutputData = env->CallObjectMethod(
+            thiz, growOutputBufferMethod, decoderOutputBuffer, requiredSize);
+    if (env->ExceptionCheck()) {
+        LOGE("growOutputBuffer() failed");
+        env->ExceptionDescribe();
+        return nullptr;
     }
-    return (jlong)createContext(env, codec, extraData, outputFloat,
-                                /* rawSampleRate= */ -1,
-                                /* rawChannelCount= */ -1);
-  }
-
-  avcodec_flush_buffers(context);
-  return (jlong)context;
+    return static_cast<uint8_t*>(env->GetDirectBufferAddress(newOutputData));
 }
 
-AUDIO_DECODER_FUNC(void, ffmpegRelease, jlong context) {
-  if (context) {
-    releaseContext((AVCodecContext*)context);
-  }
+jint ffmpegGetChannelCount(JNIEnv* env, jobject thiz, jlong context) {
+    if (!context) {
+        LOGE("Context must be non-NULL.");
+        return -1;
+    }
+    return ((AVCodecContext*)context)->ch_layout.nb_channels;
+}
+
+jint ffmpegGetSampleRate(JNIEnv* env, jobject thiz, jlong context) {
+    if (!context) {
+        LOGE("Context must be non-NULL.");
+        return -1;
+    }
+    return ((AVCodecContext*)context)->sample_rate;
+}
+
+jlong ffmpegReset(JNIEnv* env, jobject thiz, jlong jContext,
+                  jbyteArray extraData) {
+    AVCodecContext* context = (AVCodecContext*)jContext;
+    if (!context) {
+        LOGE("Tried to reset without a context.");
+        return 0L;
+    }
+
+    AVCodecID codecId = context->codec_id;
+    if (codecId == AV_CODEC_ID_TRUEHD) {
+        jboolean outputFloat =
+                (jboolean)(context->request_sample_fmt == OUTPUT_FORMAT_PCM_FLOAT);
+        // Release and recreate the context if the codec is TrueHD.
+        // TODO: Figure out why flushing doesn't work for this codec.
+        releaseContext(context);
+        const AVCodec* codec = avcodec_find_decoder(codecId);
+        if (!codec) {
+            LOGE("Unexpected error finding codec %d.", codecId);
+            return 0L;
+        }
+        return (jlong)createContext(env, codec, extraData, outputFloat,
+                /* rawSampleRate= */ -1,
+                /* rawChannelCount= */ -1);
+    }
+
+    avcodec_flush_buffers(context);
+    return (jlong)context;
+}
+
+void ffmpegRelease(JNIEnv* env, jobject thiz, jlong context) {
+    if (context) {
+        releaseContext((AVCodecContext*)context);
+    }
 }
 
 const AVCodec* getCodecByName(JNIEnv* env, jstring codecName) {
-  if (!codecName) {
-    return NULL;
-  }
-  const char* codecNameChars = env->GetStringUTFChars(codecName, NULL);
-  const AVCodec* codec = avcodec_find_decoder_by_name(codecNameChars);
-  env->ReleaseStringUTFChars(codecName, codecNameChars);
-  return codec;
+    if (!codecName) {
+        return NULL;
+    }
+    const char* codecNameChars = env->GetStringUTFChars(codecName, NULL);
+    const AVCodec* codec = avcodec_find_decoder_by_name(codecNameChars);
+    env->ReleaseStringUTFChars(codecName, codecNameChars);
+    return codec;
 }
 
 AVCodecContext* createContext(JNIEnv* env, const AVCodec* codec,
                               jbyteArray extraData, jboolean outputFloat,
                               jint rawSampleRate, jint rawChannelCount) {
-  AVCodecContext* context = avcodec_alloc_context3(codec);
-  if (!context) {
-    LOGE("Failed to allocate context.");
-    return NULL;
-  }
-  context->request_sample_fmt =
-      outputFloat ? OUTPUT_FORMAT_PCM_FLOAT : OUTPUT_FORMAT_PCM_16BIT;
-  if (extraData) {
-    jsize size = env->GetArrayLength(extraData);
-    context->extradata_size = size;
-    context->extradata =
-        (uint8_t*)av_malloc(size + AV_INPUT_BUFFER_PADDING_SIZE);
-    if (!context->extradata) {
-      LOGE("Failed to allocate extradata.");
-      releaseContext(context);
-      return NULL;
+    AVCodecContext* context = avcodec_alloc_context3(codec);
+    if (!context) {
+        LOGE("Failed to allocate context.");
+        return NULL;
     }
-    env->GetByteArrayRegion(extraData, 0, size, (jbyte*)context->extradata);
-  }
-  if (context->codec_id == AV_CODEC_ID_PCM_MULAW ||
-      context->codec_id == AV_CODEC_ID_PCM_ALAW) {
-    context->sample_rate = rawSampleRate;
-    av_channel_layout_default(&context->ch_layout, rawChannelCount);
-  }
-  context->err_recognition = AV_EF_IGNORE_ERR;
-  int result = avcodec_open2(context, codec, NULL);
-  if (result < 0) {
-    logError("avcodec_open2", result);
-    releaseContext(context);
-    return NULL;
-  }
-  return context;
+    context->request_sample_fmt =
+            outputFloat ? OUTPUT_FORMAT_PCM_FLOAT : OUTPUT_FORMAT_PCM_16BIT;
+    if (extraData) {
+        jsize size = env->GetArrayLength(extraData);
+        context->extradata_size = size;
+        context->extradata =
+                (uint8_t*)av_malloc(size + AV_INPUT_BUFFER_PADDING_SIZE);
+        if (!context->extradata) {
+            LOGE("Failed to allocate extradata.");
+            releaseContext(context);
+            return NULL;
+        }
+        env->GetByteArrayRegion(extraData, 0, size, (jbyte*)context->extradata);
+    }
+    if (context->codec_id == AV_CODEC_ID_PCM_MULAW ||
+        context->codec_id == AV_CODEC_ID_PCM_ALAW) {
+        context->sample_rate = rawSampleRate;
+        av_channel_layout_default(&context->ch_layout, rawChannelCount);
+    }
+    context->err_recognition = AV_EF_IGNORE_ERR;
+    int result = avcodec_open2(context, codec, NULL);
+    if (result < 0) {
+        logError("avcodec_open2", result);
+        releaseContext(context);
+        return NULL;
+    }
+    return context;
 }
 
 int decodePacket(AVCodecContext* context, AVPacket* packet,
                  uint8_t* outputBuffer, int outputSize,
                  GrowOutputBufferCallback growBuffer) {
-  int result = 0;
-  // Queue input data.
-  result = avcodec_send_packet(context, packet);
-  if (result) {
-    logError("avcodec_send_packet", result);
-    return transformError(result);
-  }
-
-  // Dequeue output data until it runs out.
-  int outSize = 0;
-  while (true) {
-    AVFrame* frame = av_frame_alloc();
-    if (!frame) {
-      LOGE("Failed to allocate output frame.");
-      return AUDIO_DECODER_ERROR_INVALID_DATA;
-    }
-    result = avcodec_receive_frame(context, frame);
+    int result = 0;
+    // Queue input data.
+    result = avcodec_send_packet(context, packet);
     if (result) {
-      av_frame_free(&frame);
-      if (result == AVERROR(EAGAIN)) {
-        break;
-      }
-      logError("avcodec_receive_frame", result);
-      return transformError(result);
+        logError("avcodec_send_packet", result);
+        return transformError(result);
     }
 
-    // Resample output.
-    AVSampleFormat sampleFormat = context->sample_fmt;
-    int channelCount = context->ch_layout.nb_channels;
-    int sampleRate = context->sample_rate;
-    int sampleCount = frame->nb_samples;
-    int dataSize = av_samples_get_buffer_size(NULL, channelCount, sampleCount,
-                                              sampleFormat, 1);
-    SwrContext* resampleContext = static_cast<SwrContext*>(context->opaque);
-    if (!resampleContext) {
-      result =
-          swr_alloc_set_opts2(&resampleContext,             // ps
-                              &context->ch_layout,          // out_ch_layout
-                              context->request_sample_fmt,  // out_sample_fmt
-                              sampleRate,                   // out_sample_rate
-                              &context->ch_layout,          // in_ch_layout
-                              sampleFormat,                 // in_sample_fmt
-                              sampleRate,                   // in_sample_rate
-                              0,                            // log_offset
-                              NULL                          // log_ctx
-          );
-      if (result < 0) {
-        logError("swr_alloc_set_opts2", result);
-        av_frame_free(&frame);
-        return transformError(result);
-      }
-      result = swr_init(resampleContext);
-      if (result < 0) {
-        logError("swr_init", result);
-        av_frame_free(&frame);
-        return transformError(result);
-      }
-      context->opaque = resampleContext;
-    }
+    // Dequeue output data until it runs out.
+    int outSize = 0;
+    while (true) {
+        AVFrame* frame = av_frame_alloc();
+        if (!frame) {
+            LOGE("Failed to allocate output frame.");
+            return AUDIO_DECODER_ERROR_INVALID_DATA;
+        }
+        result = avcodec_receive_frame(context, frame);
+        if (result) {
+            av_frame_free(&frame);
+            if (result == AVERROR(EAGAIN)) {
+                break;
+            }
+            logError("avcodec_receive_frame", result);
+            return transformError(result);
+        }
 
-    int outSampleSize = av_get_bytes_per_sample(context->request_sample_fmt);
-    int outSamples = swr_get_out_samples(resampleContext, sampleCount);
-    int bufferOutSize = outSampleSize * channelCount * outSamples;
-    if (outSize + bufferOutSize > outputSize) {
-      LOGD(
-          "Output buffer size (%d) too small for output data (%d), "
-          "reallocating buffer.",
-          outputSize, outSize + bufferOutSize);
-      outputSize = outSize + bufferOutSize;
-      outputBuffer = growBuffer(outputSize);
-      if (!outputBuffer) {
-        LOGE("Failed to reallocate output buffer.");
+        // Resample output.
+        AVSampleFormat sampleFormat = context->sample_fmt;
+        int channelCount = context->ch_layout.nb_channels;
+        int sampleRate = context->sample_rate;
+        int sampleCount = frame->nb_samples;
+        int dataSize = av_samples_get_buffer_size(NULL, channelCount, sampleCount,
+                                                  sampleFormat, 1);
+        SwrContext* resampleContext = static_cast<SwrContext*>(context->opaque);
+        if (!resampleContext) {
+            result =
+                    swr_alloc_set_opts2(&resampleContext,             // ps
+                                        &context->ch_layout,          // out_ch_layout
+                                        context->request_sample_fmt,  // out_sample_fmt
+                                        sampleRate,                   // out_sample_rate
+                                        &context->ch_layout,          // in_ch_layout
+                                        sampleFormat,                 // in_sample_fmt
+                                        sampleRate,                   // in_sample_rate
+                                        0,                            // log_offset
+                                        NULL                          // log_ctx
+                    );
+            if (result < 0) {
+                logError("swr_alloc_set_opts2", result);
+                av_frame_free(&frame);
+                return transformError(result);
+            }
+            result = swr_init(resampleContext);
+            if (result < 0) {
+                logError("swr_init", result);
+                av_frame_free(&frame);
+                return transformError(result);
+            }
+            context->opaque = resampleContext;
+        }
+
+        int outSampleSize = av_get_bytes_per_sample(context->request_sample_fmt);
+        int outSamples = swr_get_out_samples(resampleContext, sampleCount);
+        int bufferOutSize = outSampleSize * channelCount * outSamples;
+        if (outSize + bufferOutSize > outputSize) {
+            LOGD(
+                    "Output buffer size (%d) too small for output data (%d), "
+                    "reallocating buffer.",
+                    outputSize, outSize + bufferOutSize);
+            outputSize = outSize + bufferOutSize;
+            outputBuffer = growBuffer(outputSize);
+            if (!outputBuffer) {
+                LOGE("Failed to reallocate output buffer.");
+                av_frame_free(&frame);
+                return AUDIO_DECODER_ERROR_OTHER;
+            }
+        }
+        result = swr_convert(resampleContext, &outputBuffer, bufferOutSize,
+                             (const uint8_t**)frame->data, frame->nb_samples);
         av_frame_free(&frame);
-        return AUDIO_DECODER_ERROR_OTHER;
-      }
+        if (result < 0) {
+            logError("swr_convert", result);
+            return AUDIO_DECODER_ERROR_INVALID_DATA;
+        }
+        int available = swr_get_out_samples(resampleContext, 0);
+        if (available != 0) {
+            LOGE("Expected no samples remaining after resampling, but found %d.",
+                 available);
+            return AUDIO_DECODER_ERROR_INVALID_DATA;
+        }
+        outputBuffer += bufferOutSize;
+        outSize += bufferOutSize;
     }
-    result = swr_convert(resampleContext, &outputBuffer, bufferOutSize,
-                         (const uint8_t**)frame->data, frame->nb_samples);
-    av_frame_free(&frame);
-    if (result < 0) {
-      logError("swr_convert", result);
-      return AUDIO_DECODER_ERROR_INVALID_DATA;
-    }
-    int available = swr_get_out_samples(resampleContext, 0);
-    if (available != 0) {
-      LOGE("Expected no samples remaining after resampling, but found %d.",
-           available);
-      return AUDIO_DECODER_ERROR_INVALID_DATA;
-    }
-    outputBuffer += bufferOutSize;
-    outSize += bufferOutSize;
-  }
-  return outSize;
+    return outSize;
 }
 
 int transformError(int errorNumber) {
-  return errorNumber == AVERROR_INVALIDDATA ? AUDIO_DECODER_ERROR_INVALID_DATA
-                                            : AUDIO_DECODER_ERROR_OTHER;
+    return errorNumber == AVERROR_INVALIDDATA ? AUDIO_DECODER_ERROR_INVALID_DATA
+                                              : AUDIO_DECODER_ERROR_OTHER;
 }
 
 void logError(const char* functionName, int errorNumber) {
-  char* buffer = (char*)malloc(ERROR_STRING_BUFFER_LENGTH * sizeof(char));
-  av_strerror(errorNumber, buffer, ERROR_STRING_BUFFER_LENGTH);
-  LOGE("Error in %s: %s", functionName, buffer);
-  free(buffer);
+    char* buffer = (char*)malloc(ERROR_STRING_BUFFER_LENGTH * sizeof(char));
+    av_strerror(errorNumber, buffer, ERROR_STRING_BUFFER_LENGTH);
+    LOGE("Error in %s: %s", functionName, buffer);
+    free(buffer);
 }
 
 void releaseContext(AVCodecContext* context) {
-  if (!context) {
-    return;
-  }
-  SwrContext* swrContext;
-  if ((swrContext = (SwrContext*)context->opaque)) {
-    swr_free(&swrContext);
-    context->opaque = NULL;
-  }
-  avcodec_free_context(&context);
+    if (!context) {
+        return;
+    }
+    SwrContext* swrContext;
+    if ((swrContext = (SwrContext*)context->opaque)) {
+        swr_free(&swrContext);
+        context->opaque = NULL;
+    }
+    avcodec_free_context(&context);
 }
 
 // video
@@ -469,33 +456,38 @@ struct JniContext {
     }
 
     bool MaybeAcquireNativeWindow(JNIEnv *env, jobject new_surface) {
-        if (surface == new_surface) {
+        if (surface != nullptr && env->IsSameObject(surface, new_surface)) {
             return true;
         }
         if (native_window) {
             ANativeWindow_release(native_window);
+            native_window = nullptr;
         }
         native_window_width = 0;
         native_window_height = 0;
         native_window = ANativeWindow_fromSurface(env, new_surface);
         if (native_window == nullptr) {
             LOGE("kJniStatusANativeWindowError");
-            surface = nullptr;
+            if (surface != nullptr) {
+                env->DeleteGlobalRef(surface);
+                surface = nullptr;
+            }
             return false;
         }
-        surface = new_surface;
+        if (surface != nullptr) {
+            env->DeleteGlobalRef(surface);
+        }
+        // Must hold a global reference: local references are invalid once the
+        // JNI call returns, and IsSameObject requires a valid reference.
+        surface = env->NewGlobalRef(new_surface);
         return true;
     }
 
     jfieldID data_field;
-    jfieldID yuvPlanes_field;
-    jfieldID yuvStrides_field;
     jfieldID width_field;
     jfieldID height_field;
     jfieldID pts_field;
-    jmethodID init_for_private_frame_method;
     jmethodID init_for_yuv_frame_method;
-    jmethodID init_method;
 
     AVCodecContext *codecContext;
     SwsContext *swsContext;
@@ -511,22 +503,44 @@ struct JniContext {
 constexpr int AlignTo16(int value) { return (value + 15) & (~15); }
 
 /**
- * Convert AvFrame ColorSpace to exoplayer supported ColorSpace
+ * Convert AVFrame ColorSpace to the VideoDecoderOutputBuffer#COLORSPACE_* values
+ * (see LINT.ThenChange in VideoDecoderOutputBuffer.java): BT601=1, BT709=2, BT2020=3.
  */
 constexpr int cvt_colorspace(AVColorSpace colorSpace) {
-    int colorspace = 0;
     switch (colorSpace) {
         case AVCOL_SPC_BT470BG:
         case AVCOL_SPC_SMPTE170M:
         case AVCOL_SPC_SMPTE240M:
-            colorspace = 1;
+            // COLORSPACE_BT601
+            return 1;
         case AVCOL_SPC_BT709:
-            colorspace = 2;
+            // COLORSPACE_BT709
+            return 2;
         case AVCOL_SPC_BT2020_NCL:
         case AVCOL_SPC_BT2020_CL:
-            colorspace = 3;
+            // COLORSPACE_BT2020
+            return 3;
+        default:
+            return 0;
     }
-    return colorspace;
+}
+
+/**
+ * Returns the swscale coefficient set matching an AVColorSpace, defaulting to BT.601.
+ */
+const int *cvt_colorspace_coefficients(AVColorSpace colorSpace) {
+    switch (colorSpace) {
+        case AVCOL_SPC_BT709:
+            return sws_getCoefficients(SWS_CS_ITU709);
+        case AVCOL_SPC_BT2020_NCL:
+        case AVCOL_SPC_BT2020_CL:
+            return sws_getCoefficients(SWS_CS_BT2020);
+        case AVCOL_SPC_BT470BG:
+        case AVCOL_SPC_SMPTE170M:
+        case AVCOL_SPC_SMPTE240M:
+        default:
+            return sws_getCoefficients(SWS_CS_ITU601);
+    }
 }
 
 /**
@@ -535,20 +549,31 @@ constexpr int cvt_colorspace(AVColorSpace colorSpace) {
  * @return AVFrame
  */
 AVFrame *cvt_format(JniContext *jniContext,
-                   AVFrame *src,
-                   AVPixelFormat dst_format,
-                   int dst_width,
-                   int dst_height) {
+                    AVFrame *src,
+                    AVPixelFormat dst_format,
+                    int dst_width,
+                    int dst_height) {
     auto src_format = AVPixelFormat(src->format);
     auto swsContext = sws_getCachedContext(jniContext->swsContext,
                                            src->width, src->height, src_format,
                                            dst_width, dst_height, dst_format,
-                                           SWS_FAST_BILINEAR, NULL, NULL, NULL
+                                           SWS_BILINEAR, NULL, NULL, NULL
     );
     if (!swsContext) {
         LOGE("Failed to allocate swsContext.");
         return nullptr;
     }
+
+    // Convert with the frame's own color space / range (same on both sides) so the
+    // conversion only changes bit depth / format and keeps the YUV values intact.
+    // Otherwise swscale defaults to BT.601 limited and HDR / wide-gamut content
+    // (e.g. 10-bit BT.709 or BT.2020) is shifted, then re-shifted downstream when the
+    // renderer applies the color space signalled in VideoDecoderOutputBuffer.
+    int src_range = (src->color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
+    const int *coefficients = cvt_colorspace_coefficients(src->colorspace);
+    sws_setColorspaceDetails(swsContext, coefficients, src_range,
+                             coefficients, src_range,
+                             0, 1 << 16, 1 << 16);
 
     jniContext->swsContext = swsContext;
     auto dst = av_frame_alloc();
@@ -597,10 +622,15 @@ JniContext *createVideoContext(JNIEnv *env,
                                jint width,
                                jint height) {
     JniContext *jniContext = new(std::nothrow)JniContext();
+    if (!jniContext) {
+        LOGE("Failed to allocate JniContext.");
+        return NULL;
+    }
 
     AVCodecContext *codecContext = avcodec_alloc_context3(codec);
     if (!codecContext) {
         LOGE("Failed to allocate context.");
+        delete jniContext;
         return NULL;
     }
 
@@ -614,31 +644,37 @@ JniContext *createVideoContext(JNIEnv *env,
         if (!codecContext->extradata) {
             LOGE("Failed to allocate extradata.");
             releaseContext(codecContext);
+            delete jniContext;
             return NULL;
         }
         env->GetByteArrayRegion(extraData, 0, size, (jbyte *) codecContext->extradata);
     }
 
     // opt decode speed.
-    codecContext->skip_loop_filter = AVDISCARD_ALL;
+    // AVDISCARD_ALL would skip loop filtering entirely and visibly degrade quality
+    // (blocking artifacts); DEFAULT keeps the codec's standard behaviour.
+    codecContext->skip_loop_filter = AVDISCARD_DEFAULT;
     codecContext->skip_frame = AVDISCARD_DEFAULT;
     codecContext->thread_count = threads;
     codecContext->thread_type = FF_THREAD_FRAME;
     codecContext->err_recognition = AV_EF_IGNORE_ERR;
 
     AVDictionary *opts = NULL;
-    // libdav1d should set max_frame_delay
-    if (codec->id == AV_CODEC_ID_AV1) {
+    // libdav1d is the only AV1 decoder that exposes max_frame_delay. Only set it for
+    // libdav1d, otherwise avcodec_open2 fails with "Option not found" (e.g. libaom-av1).
+    if (codec->id == AV_CODEC_ID_AV1 && strcmp(codec->name, "libdav1d") == 0) {
         av_dict_set(&opts, "max_frame_delay", "1", 0);
     }
 
-    // mp43 format need set width x height
+    // Pass the container-advertised dimensions as the initial decode size. Formats whose
+    // bitstream lacks reliable dimensions (e.g. mp42/mp43) require this; other decoders
+    // (h264/hevc/vp9/av1/...) override it from the bitstream when opening.
     if (width > 0 && height > 0) {
         codecContext->width = width;
         codecContext->height = height;
     }
 
-    int result = avcodec_open2(codecContext, codec, NULL);
+    int result = avcodec_open2(codecContext, codec, &opts);
     if (result < 0) {
         logError("avcodec_open2", result);
         av_dict_free(&opts);
@@ -651,21 +687,18 @@ JniContext *createVideoContext(JNIEnv *env,
 
     // Populate JNI References.
     const jclass outputBufferClass = env->FindClass("androidx/media3/decoder/VideoDecoderOutputBuffer");
+    if (!outputBufferClass) {
+        LOGE("Failed to find VideoDecoderOutputBuffer class.");
+        releaseContext(codecContext);
+        delete jniContext;
+        return NULL;
+    }
     jniContext->data_field = env->GetFieldID(outputBufferClass, "data", "Ljava/nio/ByteBuffer;");
     jniContext->width_field = env->GetFieldID(outputBufferClass, "width", "I");
     jniContext->height_field = env->GetFieldID(outputBufferClass, "height", "I");
     jniContext->pts_field = env->GetFieldID(outputBufferClass, "timeUs", "J");
-
-
-    jniContext->yuvPlanes_field =
-            env->GetFieldID(outputBufferClass, "yuvPlanes", "[Ljava/nio/ByteBuffer;");
-    jniContext->yuvStrides_field = env->GetFieldID(outputBufferClass, "yuvStrides", "[I");
-    jniContext->init_for_private_frame_method =
-            env->GetMethodID(outputBufferClass, "initForPrivateFrame", "(II)V");
     jniContext->init_for_yuv_frame_method =
             env->GetMethodID(outputBufferClass, "initForYuvFrame", "(IIIII)Z");
-    jniContext->init_method =
-            env->GetMethodID(outputBufferClass, "init", "(JILjava/nio/ByteBuffer;)V");
 
     return jniContext;
 }
@@ -685,18 +718,20 @@ VIDEO_DECODER_FUNC(jlong, ffmpegInitialize, jstring codecName, jbyteArray extraD
 
 VIDEO_DECODER_FUNC(jlong, ffmpegReset, jlong jContext) {
     JniContext *const jniContext = reinterpret_cast<JniContext *>(jContext);
-    AVCodecContext *context = jniContext->codecContext;
-    if (!context) {
+    if (!jniContext || !jniContext->codecContext) {
         LOGE("Tried to reset without a context.");
         return 0L;
     }
 
-    avcodec_flush_buffers(context);
+    avcodec_flush_buffers(jniContext->codecContext);
     return (jlong) jniContext;
 }
 
 VIDEO_DECODER_FUNC(void, ffmpegRelease, jlong jContext) {
     JniContext *const jniContext = reinterpret_cast<JniContext *>(jContext);
+    if (!jniContext) {
+        return;
+    }
     AVCodecContext *context = jniContext->codecContext;
     SwsContext *swsContext = jniContext->swsContext;
 
@@ -709,16 +744,36 @@ VIDEO_DECODER_FUNC(void, ffmpegRelease, jlong jContext) {
         sws_freeContext(swsContext);
         jniContext->swsContext = NULL;
     }
+
+    if (jniContext->surface != nullptr) {
+        env->DeleteGlobalRef(jniContext->surface);
+        jniContext->surface = nullptr;
+    }
+
+    // ~JniContext() releases the ANativeWindow acquired via ANativeWindow_fromSurface.
+    delete jniContext;
 }
 
 
 VIDEO_DECODER_FUNC(jint, ffmpegSendPacket, jlong jContext, jobject encodedData,
                    jint length, jlong inputTimeUs) {
     JniContext *const jniContext = reinterpret_cast<JniContext *>(jContext);
+    if (!jniContext || !encodedData) {
+        LOGE("Invalid context or input buffer.");
+        return VIDEO_DECODER_ERROR_OTHER;
+    }
     AVCodecContext *avContext = jniContext->codecContext;
 
     uint8_t *inputBuffer = (uint8_t *) env->GetDirectBufferAddress(encodedData);
+    if (!inputBuffer) {
+        LOGE("Input data is not a direct ByteBuffer.");
+        return VIDEO_DECODER_ERROR_OTHER;
+    }
     auto packet = av_packet_alloc();
+    if (!packet) {
+        LOGE("Failed to allocate packet.");
+        return VIDEO_DECODER_ERROR_OTHER;
+    }
     packet->data = inputBuffer;
     packet->size = length;
     packet->pts = inputTimeUs;
@@ -769,16 +824,19 @@ VIDEO_DECODER_FUNC(jint, ffmpegReceiveFrame, jlong jContext, jint outputMode, jo
         return VIDEO_DECODER_ERROR_OTHER;
     }
 
-    // Use swscale to cvt format to YUV420P
-    AVFrame *cvt_frame = cvt_format(jniContext, raw_frame, AV_PIX_FMT_YUV420P, raw_frame->width, raw_frame->height);
-    if (cvt_frame == nullptr) {
+    // Convert to YUV420P with swscale only when the decoded format differs. When the
+    // frame is already YUV420P (the common case), use it directly and skip one full
+    // frame allocation + conversion per frame.
+    AVFrame *cvt_frame = raw_frame;
+    if (raw_frame->format != AV_PIX_FMT_YUV420P) {
+        cvt_frame = cvt_format(jniContext, raw_frame, AV_PIX_FMT_YUV420P, raw_frame->width, raw_frame->height);
+        if (cvt_frame == nullptr) {
+            av_frame_free(&raw_frame);
+            LOGW("Convert To YUV420P failed.");
+            return VIDEO_DECODER_ERROR_OTHER;
+        }
         av_frame_free(&raw_frame);
-        LOGW("Convert To YUV420P failed.");
-        return VIDEO_DECODER_ERROR_OTHER;
     }
-
-    // Convert Success! free the raw frame!
-    av_frame_free(&raw_frame);
 
     int width = env->GetIntField(jOutputBuffer, jniContext->width_field);
     int height = env->GetIntField(jOutputBuffer, jniContext->height_field);
@@ -800,12 +858,18 @@ VIDEO_DECODER_FUNC(jint, ffmpegReceiveFrame, jlong jContext, jint outputMode, jo
     int stride_uv = (output_width + 1) / 2;
 
     jboolean init_result = JNI_TRUE;
-    if (width != output_width && height != output_height) {
+    if (width != output_width || height != output_height) {
         // init data
         init_result = env->CallBooleanMethod(jOutputBuffer, jniContext->init_for_yuv_frame_method,
                                              output_width, output_height, stride_y, stride_uv, color_space);
-        LOGE("init_for_yuv_frame_method! wh [%d,%d], buffer wh [%d,%d]", output_width, output_height, width, height);
-    } else {
+        LOGD("init_for_yuv_frame_method! wh [%d,%d], buffer wh [%d,%d]", output_width, output_height, width, height);
+    }
+    // Override the timestamp with the frame's own PTS in both paths. FFmpeg may output a
+    // reordered frame whose PTS differs from the input buffer that triggered the receive,
+    // so the timestamp should come from the decoded frame itself. Guard against frames
+    // without a PTS (AV_NOPTS_VALUE), in which case the Java-side fallback timestamp
+    // (inputBuffer.timeUs) is kept.
+    if (cvt_frame->pts != AV_NOPTS_VALUE) {
         env->SetLongField(jOutputBuffer, jniContext->pts_field, cvt_frame->pts);
     }
 
@@ -828,7 +892,7 @@ VIDEO_DECODER_FUNC(jint, ffmpegReceiveFrame, jlong jContext, jint outputMode, jo
 
     // rotate YUV data & copy to OutputBuffer
     libyuv::RotationMode rotate = cvt_rotate(jniContext->rotate_degree);
-    libyuv::I420Rotate(
+    int rotate_result = libyuv::I420Rotate(
             cvt_frame->data[0], cvt_frame->linesize[0],
             cvt_frame->data[1], cvt_frame->linesize[1],
             cvt_frame->data[2], cvt_frame->linesize[2],
@@ -838,6 +902,10 @@ VIDEO_DECODER_FUNC(jint, ffmpegReceiveFrame, jlong jContext, jint outputMode, jo
             cvt_frame->width, cvt_frame->height, rotate
     );
     av_frame_free(&cvt_frame);
+    if (rotate_result != 0) {
+        LOGE("I420Rotate failed: %d", rotate_result);
+        return VIDEO_DECODER_ERROR_OTHER;
+    }
     return result;
 }
 
@@ -867,7 +935,10 @@ VIDEO_DECODER_FUNC(jint, ffmpegRenderFrame, jlong jContext, jobject jSurface,
     int result = ANativeWindow_lock(jniContext->native_window, &native_window_buffer, nullptr);
     if (result == -19) {
         // Surface: dequeueBuffer failed (No such device)
-        jniContext->surface = nullptr;
+        if (jniContext->surface != nullptr) {
+            env->DeleteGlobalRef(jniContext->surface);
+            jniContext->surface = nullptr;
+        }
         return VIDEO_DECODER_ERROR_SURFACE;
     } else if (result || native_window_buffer.bits == nullptr) {
         LOGE("kJniStatusANativeWindowError ANativeWindow_lock rst [%d]", result);
@@ -892,7 +963,7 @@ VIDEO_DECODER_FUNC(jint, ffmpegRenderFrame, jlong jContext, jobject jSurface,
     const int window_v_plane_size = window_v_plane_height * window_uv_plane_stride;
     const auto window_bits = reinterpret_cast<uint8_t *>(native_window_buffer.bits);
 
-    libyuv::I420Copy(
+    int copy_result = libyuv::I420Copy(
             data, src_stride_y,
             data + src_length_y, src_stride_uv,
             data + src_length_y + src_length_uv, src_stride_uv,
@@ -901,6 +972,11 @@ VIDEO_DECODER_FUNC(jint, ffmpegRenderFrame, jlong jContext, jobject jSurface,
             window_bits + window_y_plane_size, window_uv_plane_stride,
             native_window_buffer.width, native_window_buffer.height
     );
+    if (copy_result != 0) {
+        ANativeWindow_unlockAndPost(jniContext->native_window);
+        LOGE("I420Copy failed: %d", copy_result);
+        return VIDEO_DECODER_ERROR_OTHER;
+    }
     int rst = ANativeWindow_unlockAndPost(jniContext->native_window);
     if (rst) {
         LOGE("kJniStatusANativeWindowError ANativeWindow_unlockAndPost rst [%d]", rst);
@@ -910,4 +986,69 @@ VIDEO_DECODER_FUNC(jint, ffmpegRenderFrame, jlong jContext, jobject jSurface,
     return VIDEO_DECODER_SUCCESS;
 }
 
+jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    JNIEnv* env;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        LOGE("JNI_OnLoad: GetEnv failed");
+        return -1;
+    }
+    jclass clazz =
+            env->FindClass("androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder");
+    if (!clazz) {
+        LOGE("JNI_OnLoad: FindClass failed");
+        return -1;
+    }
+    growOutputBufferMethod =
+            env->GetMethodID(clazz, "growOutputBuffer",
+                             "(Landroidx/media3/decoder/"
+                             "SimpleDecoderOutputBuffer;I)Ljava/nio/ByteBuffer;");
+    if (!growOutputBufferMethod) {
+        LOGE("JNI_OnLoad: GetMethodID failed");
+        return -1;
+    }
+    static const JNINativeMethod kFfmpegAudioDecoderMethods[] = {
+            {"ffmpegInitialize", "(Ljava/lang/String;[BZII)J",
+                                      reinterpret_cast<void*>(ffmpegInitialize)},
+            {"ffmpegDecode",
+                    "(JLjava/nio/ByteBuffer;ILandroidx/media3/decoder/"
+                    "SimpleDecoderOutputBuffer;Ljava/nio/ByteBuffer;I)I",
+                                      reinterpret_cast<void*>(ffmpegDecode)},
+            {"ffmpegGetChannelCount", "(J)I",
+                                      reinterpret_cast<void*>(ffmpegGetChannelCount)},
+            {"ffmpegGetSampleRate", "(J)I",
+                                      reinterpret_cast<void*>(ffmpegGetSampleRate)},
+            {"ffmpegReset", "(J[B)J", reinterpret_cast<void*>(ffmpegReset)},
+            {"ffmpegRelease", "(J)V", reinterpret_cast<void*>(ffmpegRelease)},
+    };
+    if (env->RegisterNatives(clazz, kFfmpegAudioDecoderMethods,
+                             sizeof(kFfmpegAudioDecoderMethods) /
+                             sizeof(kFfmpegAudioDecoderMethods[0])) < 0) {
+        LOGE("JNI_OnLoad: RegisterNatives failed for FfmpegAudioDecoder");
+        return -1;
+    }
 
+    jclass libraryClazz =
+            env->FindClass("androidx/media3/decoder/ffmpeg/FfmpegLibrary");
+    if (!libraryClazz) {
+        LOGE("JNI_OnLoad: FindClass failed for FfmpegLibrary");
+        return -1;
+    }
+    static const JNINativeMethod kFfmpegLibraryMethods[] = {
+            {"ffmpegGetVersion", "()Ljava/lang/String;",
+                    reinterpret_cast<void*>(ffmpegGetVersion)},
+            {"ffmpegGetInputBufferPaddingSize", "()I",
+                    reinterpret_cast<void*>(ffmpegGetInputBufferPaddingSize)},
+            {"ffmpegHasDecoder", "(Ljava/lang/String;)Z",
+                    reinterpret_cast<void*>(ffmpegHasDecoder)},
+            {"ffmpegGetAv1DecoderName", "()Ljava/lang/String;",
+                    reinterpret_cast<void*>(ffmpegGetAv1DecoderName)},
+    };
+    if (env->RegisterNatives(libraryClazz, kFfmpegLibraryMethods,
+                             sizeof(kFfmpegLibraryMethods) /
+                             sizeof(kFfmpegLibraryMethods[0])) < 0) {
+        LOGE("JNI_OnLoad: RegisterNatives failed for FfmpegLibrary");
+        return -1;
+    }
+
+    return JNI_VERSION_1_6;
+}

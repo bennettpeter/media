@@ -15,17 +15,17 @@
  */
 package androidx.media3.decoder.ffmpeg;
 
-import static java.lang.Runtime.getRuntime;
+import static androidx.media3.exoplayer.DecoderReuseEvaluation.DISCARD_REASON_MIME_TYPE_CHANGED;
+import static androidx.media3.exoplayer.DecoderReuseEvaluation.REUSE_RESULT_NO;
+import static androidx.media3.exoplayer.DecoderReuseEvaluation.REUSE_RESULT_YES_WITHOUT_RECONFIGURATION;
 
 import android.os.Handler;
 import android.view.Surface;
-
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
-import androidx.media3.common.util.ExperimentalApi;
-import androidx.media3.common.util.TraceUtil;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.util.ExperimentalApi;
 import androidx.media3.common.util.TraceUtil;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
@@ -37,7 +37,6 @@ import androidx.media3.exoplayer.DecoderReuseEvaluation;
 import androidx.media3.exoplayer.RendererCapabilities;
 import androidx.media3.exoplayer.video.DecoderVideoRenderer;
 import androidx.media3.exoplayer.video.VideoRendererEventListener;
-import java.util.Objects;
 
 // TODO: Merge actual implementation in https://github.com/androidx/media/pull/1591.
 /**
@@ -56,7 +55,7 @@ public final class ExperimentalFfmpegVideoRenderer extends DecoderVideoRenderer 
 
   /* Default size based on 720p resolution video compressed by a factor of two. */
   private static final int DEFAULT_INPUT_BUFFER_SIZE =
-      Util.ceilDivide(1280, 64) * Util.ceilDivide(720, 64) * (64 * 64 * 3 / 2) / 2;
+          Util.ceilDivide(1280, 64) * Util.ceilDivide(720, 64) * (64 * 64 * 3 / 2) / 2;
 
 
   /**
@@ -86,18 +85,18 @@ public final class ExperimentalFfmpegVideoRenderer extends DecoderVideoRenderer 
    *     invocations of {@link VideoRendererEventListener#onDroppedFrames(int, long)}.
    */
   public ExperimentalFfmpegVideoRenderer(
-      long allowedJoiningTimeMs,
-      @Nullable Handler eventHandler,
-      @Nullable VideoRendererEventListener eventListener,
-      int maxDroppedFramesToNotify) {
+          long allowedJoiningTimeMs,
+          @Nullable Handler eventHandler,
+          @Nullable VideoRendererEventListener eventListener,
+          int maxDroppedFramesToNotify) {
     this(
-        allowedJoiningTimeMs,
-        eventHandler,
-        eventListener,
-        maxDroppedFramesToNotify,
-        /* threads= */ getRuntime().availableProcessors(),
-        DEFAULT_NUM_OF_INPUT_BUFFERS,
-        DEFAULT_NUM_OF_OUTPUT_BUFFERS);
+            allowedJoiningTimeMs,
+            eventHandler,
+            eventListener,
+            maxDroppedFramesToNotify,
+            /* threads= */ Runtime.getRuntime().availableProcessors(),
+            DEFAULT_NUM_OF_INPUT_BUFFERS,
+            DEFAULT_NUM_OF_OUTPUT_BUFFERS);
   }
 
   /**
@@ -112,13 +111,13 @@ public final class ExperimentalFfmpegVideoRenderer extends DecoderVideoRenderer 
    *                                 invocations of {@link VideoRendererEventListener#onDroppedFrames(int, long)}.
    */
   public ExperimentalFfmpegVideoRenderer(
-      long allowedJoiningTimeMs,
-      @Nullable Handler eventHandler,
-      @Nullable VideoRendererEventListener eventListener,
-      int maxDroppedFramesToNotify,
-      int threads,
-      int numInputBuffers,
-      int numOutputBuffers) {
+          long allowedJoiningTimeMs,
+          @Nullable Handler eventHandler,
+          @Nullable VideoRendererEventListener eventListener,
+          int maxDroppedFramesToNotify,
+          int threads,
+          int numInputBuffers,
+          int numOutputBuffers) {
     super(allowedJoiningTimeMs, eventHandler, eventListener, maxDroppedFramesToNotify);
     this.threads = threads;
     this.numInputBuffers = numInputBuffers;
@@ -140,25 +139,27 @@ public final class ExperimentalFfmpegVideoRenderer extends DecoderVideoRenderer 
     } else if (format.cryptoType != C.CRYPTO_TYPE_NONE) {
       return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_DRM);
     } else {
+      // The FFmpeg decoder has no reconfiguration channel (no way to update extradata /
+      // dimensions on an open decoder), so adaptive switching requires a decoder rebuild.
       return RendererCapabilities.create(
-          C.FORMAT_HANDLED,
-          ADAPTIVE_SEAMLESS,
-          TUNNELING_NOT_SUPPORTED);
+              C.FORMAT_HANDLED,
+              ADAPTIVE_NOT_SEAMLESS,
+              TUNNELING_NOT_SUPPORTED);
     }
   }
 
   @Override
   protected Decoder<DecoderInputBuffer, VideoDecoderOutputBuffer, FfmpegDecoderException>
-      createDecoder(Format format, @Nullable CryptoConfig cryptoConfig)
+  createDecoder(Format format, @Nullable CryptoConfig cryptoConfig)
           throws FfmpegDecoderException {
     TraceUtil.beginSection("createFfmpegVideoDecoder");
     int initialInputBufferSize =
-        format.maxInputSize != Format.NO_VALUE ? format.maxInputSize : DEFAULT_INPUT_BUFFER_SIZE;
-    int threads = Math.max(this.threads, 4);
+            format.maxInputSize != Format.NO_VALUE ? format.maxInputSize : DEFAULT_INPUT_BUFFER_SIZE;
+    int threads = Math.max(this.threads, 1);
     ExperimentalFfmpegVideoDecoder decoder =
-        new ExperimentalFfmpegVideoDecoder(numInputBuffers, numOutputBuffers,
-            initialInputBufferSize, threads,
-            format);
+            new ExperimentalFfmpegVideoDecoder(numInputBuffers, numOutputBuffers,
+                    initialInputBufferSize, threads,
+                    format);
     this.decoder = decoder;
     TraceUtil.endSection();
     return decoder;
@@ -166,13 +167,18 @@ public final class ExperimentalFfmpegVideoRenderer extends DecoderVideoRenderer 
 
   @Override
   protected void renderOutputBufferToSurface(VideoDecoderOutputBuffer outputBuffer, Surface surface)
-      throws FfmpegDecoderException {
-    if (decoder == null) {
-      throw new FfmpegDecoderException(
-          "Failed to render output buffer to surface: decoder is not initialized.");
+          throws FfmpegDecoderException {
+    try {
+      if (decoder == null) {
+        throw new FfmpegDecoderException(
+                "Failed to render output buffer to surface: decoder is not initialized.");
+      }
+      decoder.renderToSurface(outputBuffer, surface);
+    } finally {
+      // Always return the buffer to the pool, also on render failure, to avoid
+      // starving the SimpleDecoder output-buffer pool.
+      outputBuffer.release();
     }
-    decoder.renderToSurface(outputBuffer, surface);
-    outputBuffer.release();
   }
 
   @Override
@@ -184,8 +190,13 @@ public final class ExperimentalFfmpegVideoRenderer extends DecoderVideoRenderer 
 
   @Override
   protected DecoderReuseEvaluation canReuseDecoder(
-      String decoderName, Format oldFormat, Format newFormat) {
-    // TODO: Ability to reuse the decoder may be MIME type dependent.
-    return super.canReuseDecoder(decoderName, oldFormat, newFormat);
+          String decoderName, Format oldFormat, Format newFormat) {
+    // No reconfiguration support: always rebuild the decoder on any format change.
+    return new DecoderReuseEvaluation(
+            decoderName,
+            oldFormat,
+            newFormat,
+            REUSE_RESULT_NO,
+            DISCARD_REASON_MIME_TYPE_CHANGED);
   }
 }
