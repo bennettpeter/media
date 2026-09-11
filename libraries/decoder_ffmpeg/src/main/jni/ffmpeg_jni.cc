@@ -16,11 +16,12 @@
 #include <android/log.h>
 #include <jni.h>
 #include <stdlib.h>
+#include <algorithm>
+#include <new>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <libyuv.h>
 #include <libyuv/scale.h>
-#include <__algorithm/min.h>
 
 extern "C" {
 #ifdef __cplusplus
@@ -622,8 +623,9 @@ JniContext *createVideoContext(JNIEnv *env,
                                jint degree,
                                jint width,
                                jint height) {
-    JniContext *jniContext = new JniContext();
-    if (!jniContext) {
+  JniContext *jniContext = new(std::nothrow)JniContext();
+
+  if (!jniContext) {
         LOGE("Failed to allocate JniContext.");
         return NULL;
     }
