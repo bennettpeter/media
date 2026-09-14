@@ -1,7 +1,6 @@
 # Proguard rules specific to the FFmpeg extension.
 
 # This prevents the names of native methods from being obfuscated.
--keepclasseswithmembernames class * {
 # This prevents the names of native methods from being obfuscated. The class names are
 # kept as well (a -keep rule keeps the matched classes), which the JNI layer relies on:
 # FfmpegLibrary is found by name in JNI_OnLoad and the video decoder's native methods
