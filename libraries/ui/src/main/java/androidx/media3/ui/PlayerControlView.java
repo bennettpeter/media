@@ -374,8 +374,10 @@ public class PlayerControlView extends FrameLayout {
   private static final int MAX_UPDATE_INTERVAL_MS = 1_000;
 
   // LINT.IfChange(playback_speeds)
-  private static final float[] PLAYBACK_SPEEDS =
-      new float[] {0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f};
+  // PLAYBACK_SPEEDS is replaced by integer array resource
+  // exo_controls_playback_speed_values
+//  private static final float[] PLAYBACK_SPEEDS =
+//      new float[] {0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f};
   // LINT.ThenChange("../../../../res/values/strings.xml:playback_speeds")
 
   private static final int SETTINGS_PLAYBACK_SPEED_POSITION = 0;
@@ -821,10 +823,14 @@ public class PlayerControlView extends FrameLayout {
         resources.getString(R.string.exo_controls_cc_disabled_description);
     textTrackSelectionAdapter = new TextTrackSelectionAdapter();
     audioTrackSelectionAdapter = new AudioTrackSelectionAdapter();
+    int [] iValues = resources.getIntArray(R.array.exo_controls_playback_speed_values);
+    float[] playbackSpeeds = new float[iValues.length];
+    for (int ix = 0; ix < iValues.length; ix++) {
+      playbackSpeeds[ix] = (float)iValues[ix] / 100.0f;
+    }
     playbackSpeedAdapter =
         new PlaybackSpeedAdapter(
-            resources.getStringArray(R.array.exo_controls_playback_speeds), PLAYBACK_SPEEDS);
-
+            resources.getStringArray(R.array.exo_controls_playback_speeds), playbackSpeeds);
     playButtonDrawable = getDrawable(context, resources, playDrawableResId);
     pauseButtonDrawable = getDrawable(context, resources, pauseDrawableResId);
     fullscreenExitDrawable = getDrawable(context, resources, fullscreenExitDrawableResId);
